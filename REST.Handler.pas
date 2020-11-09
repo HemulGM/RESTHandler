@@ -52,7 +52,6 @@ type
     FRESTClient: TRESTClient;
     FOnError: TOnHandlerError;
     FOnLog: TOnHandlerLog;
-    FUseServiceKeyOnly: Boolean;
     FOwner: TObject;
     FExecuting: Integer;
     FFullLog: Boolean;
@@ -68,7 +67,6 @@ type
     procedure ProcError(E: Exception); overload;
     procedure SetOnError(const Value: TOnHandlerError);
     procedure SetOnLog(const Value: TOnHandlerLog);
-    procedure SetUseServiceKeyOnly(const Value: Boolean);
     procedure SetOwner(const Value: TObject);
     procedure SetFullLog(const Value: Boolean);
     procedure SetRequestLimitPerSecond(const Value: Integer);
@@ -95,7 +93,6 @@ type
     property Executing: Boolean read GetExecuting;
     property QueueWaits: Integer read FQueueWaits;
     //
-    property UseServiceKeyOnly: Boolean read FUseServiceKeyOnly write SetUseServiceKeyOnly;
     property UsePseudoAsync: Boolean read FUsePseudoAsync write SetUsePseudoAsync;
     property FullLog: Boolean read FFullLog write SetFullLog;
     property RequestLimitPerSecond: Integer read FRequestLimitPerSecond write SetRequestLimitPerSecond;
@@ -205,16 +202,15 @@ end;
 procedure TRESTHandler.InternalExecute(Request: TRESTRequest);
 begin
   Queue;
-  try
-    Request.Execute;
-  except
-  end;
+  Request.Execute;
 end;
 
 function TRESTHandler.FExecute(Request: TRESTRequest): TResponse;
 var
   IsDone: Boolean;
+  Error: Exception;
 begin
+  Error := nil;
   Result.Success := False;
   if FFullLog then
     FLog(Request.GetFullRequestURL);
@@ -226,7 +222,12 @@ begin
       with TThread.CreateAnonymousThread(
         procedure
         begin
-          InternalExecute(Request);
+          try
+            InternalExecute(Request);
+          except
+            on E: Exception do
+              Error := E;
+          end;
           IsDone := True;
         end) do
       begin
@@ -236,6 +237,8 @@ begin
           Application.ProcessMessages;
         Free;
       end;
+      if Assigned(Error) then
+        raise Error;
     end
     else
     begin
@@ -243,7 +246,7 @@ begin
       IsDone := True;
     end;
 
-    if (not Application.Terminated) and IsDone then
+    if IsDone then
     begin
       if FFullLog then
         FLog(Request.Response.JSONText);
@@ -314,11 +317,6 @@ begin
   FUsePseudoAsync := Value;
 end;
 
-procedure TRESTHandler.SetUseServiceKeyOnly(const Value: Boolean);
-begin
-  FUseServiceKeyOnly := Value;
-end;
-
 procedure TRESTHandler.SetFullLog(const Value: Boolean);
 begin
   FFullLog := Value;
@@ -327,7 +325,7 @@ end;
 procedure TRESTHandler.ProcError(E: Exception);
 begin
   if Assigned(FOnError) then
-    FOnError(Self, THandlerException.Create(E.Message), 0, E.Message);
+    FOnError(Self, E, 0, E.Message);
 end;
 
 { TResponse }
