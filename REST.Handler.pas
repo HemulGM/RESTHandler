@@ -25,11 +25,10 @@ type
 
   TResponse = record
     Success: Boolean;
-    Response: string;
     JSON: string;
     Error: TResponseError;
     function GetJSONValue: TJSONValue;
-    function GetJSONResponse: TJSONValue;
+    function AsObject<T: class, constructor>(out Value: T): Boolean;
   end;
 
   TOnHandlerError = procedure(Sender: TObject; E: Exception; Code: Integer; Text: string) of object;
@@ -331,18 +330,23 @@ end;
 { TResponse }
 
 {$WARNINGS OFF}
-function TResponse.GetJSONValue: TJSONValue;
+function TResponse.AsObject<T>(out Value: T): Boolean;
 begin
-  if not JSON.IsEmpty then
-    Result := TJSONObject.ParseJSONValue(UTF8ToString(JSON))
+  if Success then
+  try
+    Value := TJson.JsonToObject<T>(JSON);
+    Result := True;
+  except
+    Result := False;
+  end
   else
-    Result := nil;
+    Result := False;
 end;
 
-function TResponse.GetJSONResponse: TJSONValue;
+function TResponse.GetJSONValue: TJSONValue;
 begin
-  if not Response.IsEmpty then
-    Result := TJSONObject.ParseJSONValue(UTF8ToString(Response))
+  if Success and (not JSON.IsEmpty) then
+    Result := TJSONObject.ParseJSONValue(UTF8ToString(JSON))
   else
     Result := nil;
 end;
